@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import type { ReactElement } from "react";
+import type { ExpenseCategory } from "@/db/schema";
 
 export interface ImageOptions {
 	width?: number;
@@ -36,21 +37,38 @@ export const colors = {
 	success: "#10B981",
 	warning: "#F59E0B",
 	error: "#EF4444",
-	// Macro colors
-	calories: "#EF4444",
-	protein: "#3B82F6",
-	carbs: "#F59E0B",
-	fat: "#8B5CF6",
-	fiber: "#10B981",
+	// Money/expense colors
+	expense: "#EF4444", // Red for expenses
+	income: "#10B981", // Green for income (future)
 };
 
-// Meal type info
-export const mealInfo = {
-	breakfast: { emoji: "sunrise", label: "Breakfast", color: "#F59E0B" },
-	lunch: { emoji: "sun", label: "Lunch", color: "#10B981" },
-	dinner: { emoji: "moon", label: "Dinner", color: "#6366F1" },
-	snack: { emoji: "cookie", label: "Snack", color: "#EC4899" },
-} as const;
+// Category info with colors and labels
+export const categoryInfo: Record<
+	ExpenseCategory,
+	{ label: string; color: string; icon: string }
+> = {
+	food_dining: { label: "Food & Dining", color: "#F59E0B", icon: "F" },
+	transportation: { label: "Transportation", color: "#3B82F6", icon: "T" },
+	shopping: { label: "Shopping", color: "#EC4899", icon: "S" },
+	entertainment: { label: "Entertainment", color: "#8B5CF6", icon: "E" },
+	bills_utilities: { label: "Bills & Utilities", color: "#6366F1", icon: "B" },
+	health: { label: "Health", color: "#10B981", icon: "H" },
+	education: { label: "Education", color: "#06B6D4", icon: "Ed" },
+	travel: { label: "Travel", color: "#F97316", icon: "Tr" },
+	other: { label: "Other", color: "#6B7280", icon: "O" },
+};
+
+/**
+ * Format number as currency
+ */
+export function formatCurrency(amount: number, currency = "USD"): string {
+	return new Intl.NumberFormat("en-US", {
+		style: "currency",
+		currency,
+		minimumFractionDigits: 2,
+		maximumFractionDigits: 2,
+	}).format(amount);
+}
 
 /**
  * Format number with commas
@@ -81,9 +99,39 @@ export function formatTime(date: Date): string {
 	}).format(date);
 }
 
-export {
-	type DailySummaryData,
-	renderDailySummary,
-} from "./templates/daily-summary";
+/**
+ * Format date range for display
+ */
+export function formatDateRange(startDate: Date, endDate: Date): string {
+	const sameMonth =
+		startDate.getMonth() === endDate.getMonth() &&
+		startDate.getFullYear() === endDate.getFullYear();
+
+	if (sameMonth) {
+		return `${startDate.getDate()} - ${new Intl.DateTimeFormat("en-US", {
+			month: "short",
+			day: "numeric",
+			year: "numeric",
+		}).format(endDate)}`;
+	}
+
+	return `${new Intl.DateTimeFormat("en-US", {
+		month: "short",
+		day: "numeric",
+	}).format(startDate)} - ${new Intl.DateTimeFormat("en-US", {
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+	}).format(endDate)}`;
+}
+
 // Re-export templates
-export { type FoodAddedData, renderFoodAdded } from "./templates/food-added";
+export {
+	type ExpenseAddedData,
+	renderExpenseAdded,
+} from "./templates/expense-added";
+export {
+	type CategoryBreakdown,
+	type ExpensesSummaryData,
+	renderExpensesSummary,
+} from "./templates/expenses-summary";
