@@ -3,14 +3,19 @@ import { put } from "@vercel/blob";
 import { generateText, stepCountIs } from "ai";
 import { and, eq, gte, lt } from "drizzle-orm";
 import { getDb, schema } from "@/db";
-import type { MealType } from "@/db/schema";
-import type { LogFoodParams } from "@/lib/ai/tools";
+import type { ExpenseCategory } from "@/db/schema";
+import type {
+	GetExpensesByCategoryParams,
+	GetExpensesSummaryParams,
+	LogExpenseParams,
+} from "@/lib/ai/tools";
 import { tools } from "@/lib/ai/tools";
 import {
-	type DailySummaryData,
-	type FoodAddedData,
-	renderDailySummary,
-	renderFoodAdded,
+	type CategoryBreakdown,
+	type ExpenseAddedData,
+	type ExpensesSummaryData,
+	renderExpenseAdded,
+	renderExpensesSummary,
 } from "@/lib/images";
 
 // Initialize WhatsApp client lazily
@@ -258,30 +263,25 @@ async function getOrCreateUser(phoneNumber: string) {
 }
 
 /**
- * Save food entry to database
+ * Save expense to database
  */
-async function saveFoodEntry(
+async function saveExpense(
 	userId: string,
-	params: LogFoodParams,
+	params: LogExpenseParams,
 	rawMessage: string,
 ) {
 	const db = getDb();
 
 	const [entry] = await db
-		.insert(schema.foodEntries)
+		.insert(schema.expenses)
 		.values({
 			userId,
-			foodName: params.foodName,
-			foodId: params.foodId,
-			quantity: params.quantity.toString(),
-			unit: params.unit,
-			calories: params.calories.toString(),
-			protein: params.protein.toString(),
-			carbs: params.carbs.toString(),
-			fat: params.fat.toString(),
-			fiber: params.fiber?.toString(),
-			eatenAt: new Date(params.eatenAt),
-			mealType: params.mealType,
+			description: params.description,
+			amount: params.amount.toString(),
+			currency: "USD",
+			category: params.category,
+			vendor: params.vendor,
+			spentAt: new Date(params.spentAt),
 			rawMessage,
 		})
 		.returning();
@@ -290,44 +290,203 @@ async function saveFoodEntry(
 }
 
 /**
- * Get daily summary for a user
+ * Get date range boundaries for a period
  */
-async function getDailySummary(userId: string, dateStr: string) {
+function getDateRangeForPeriod(
+	period: "day" | "week" | "month" | "year",
+	referenceDate: Date,
+): { start: Date; end: Date; label: string } {
+	const year = referenceDate.getFullYear();
+	const month = referenceDate.getMonth();
+	const date = referenceDate.getDate();
+	const day = referenceDate.getDay();
+
+	switch (period) {
+		case "day": {
+			// Colombia is UTC-5
+			const startOfDayUTC = new Date(Date.UTC(year, month, date, 5, 0, 0, 0));
+			const endOfDayUTC = new Date(Date.UTC(year, month, date + 1, 5, 0, 0, 0));
+			return { start: startOfDayUTC, end: endOfDayUTC, label: "Today" };
+		}
+		case "week": {
+			// Start of week (Sunday)
+			const startOfWeek = new Date(year, month, date - day);
+			const startOfWeekUTC = new Date(
+				Date.UTC(
+					startOfWeek.getFullYear(),
+					startOfWeek.getMonth(),
+					startOfWeek.getDate(),
+					5,
+					0,
+					0,
+					0,
+				),
+			);
+			const endOfWeekUTC = new Date(
+				Date.UTC(
+					startOfWeek.getFullYear(),
+					startOfWeek.getMonth(),
+					startOfWeek.getDate() + 7,
+					5,
+					0,
+					0,
+					0,
+				),
+			);
+			return { start: startOfWeekUTC, end: endOfWeekUTC, label: "This Week" };
+		}
+		case "month": {
+			const startOfMonthUTC = new Date(Date.UTC(year, month, 1, 5, 0, 0, 0));
+			const endOfMonthUTC = new Date(Date.UTC(year, month + 1, 1, 5, 0, 0, 0));
+			return {
+				start: startOfMonthUTC,
+				end: endOfMonthUTC,
+				label: "This Month",
+			};
+		}
+		case "year": {
+			const startOfYearUTC = new Date(Date.UTC(year, 0, 1, 5, 0, 0, 0));
+			const endOfYearUTC = new Date(Date.UTC(year + 1, 0, 1, 5, 0, 0, 0));
+			return { start: startOfYearUTC, end: endOfYearUTC, label: "This Year" };
+		}
+	}
+}
+
+/**
+ * Get expenses summary for a user
+ */
+async function getExpensesSummary(
+	userId: string,
+	params: GetExpensesSummaryParams,
+) {
 	const db = getDb();
 
-	// Parse date string (YYYY-MM-DD) and create Colombia timezone boundaries
-	// The date string represents a date in Colombia timezone
-	const [year, month, day] = dateStr.split("-").map(Number);
+	// Parse reference date or use today
+	const referenceDate = params.date
+		? new Date(params.date + "T12:00:00")
+		: getColombiaTime();
 
-	// Create start of day in Colombia timezone (UTC-5)
-	// Colombia is UTC-5, so midnight Colombia = 05:00 UTC
-	const startOfDayUTC = new Date(Date.UTC(year, month - 1, day, 5, 0, 0, 0));
+	const { start, end, label } = getDateRangeForPeriod(
+		params.period,
+		referenceDate,
+	);
 
-	// End of day in Colombia timezone = next day 00:00 Colombia = next day 05:00 UTC
-	const endOfDayUTC = new Date(Date.UTC(year, month - 1, day + 1, 5, 0, 0, 0));
+	// Build where conditions
+	const whereConditions = [
+		eq(schema.expenses.userId, userId),
+		gte(schema.expenses.spentAt, start),
+		lt(schema.expenses.spentAt, end),
+	];
 
-	const entries = await db.query.foodEntries.findMany({
+	if (params.category) {
+		whereConditions.push(eq(schema.expenses.category, params.category));
+	}
+
+	const entries = await db.query.expenses.findMany({
+		where: and(...whereConditions),
+	});
+
+	// Calculate totals and group by category
+	const byCategory = new Map<
+		ExpenseCategory,
+		{ total: number; count: number }
+	>();
+
+	let totalAmount = 0;
+
+	for (const entry of entries) {
+		const amount = Number(entry.amount);
+		totalAmount += amount;
+
+		const existing = byCategory.get(entry.category) || { total: 0, count: 0 };
+		byCategory.set(entry.category, {
+			total: existing.total + amount,
+			count: existing.count + 1,
+		});
+	}
+
+	const categoryBreakdown: CategoryBreakdown[] = Array.from(
+		byCategory.entries(),
+	).map(([category, data]) => ({
+		category,
+		total: data.total,
+		count: data.count,
+	}));
+
+	return {
+		periodLabel: label,
+		startDate: start,
+		endDate: end,
+		totalAmount,
+		entryCount: entries.length,
+		byCategory: categoryBreakdown,
+	};
+}
+
+/**
+ * Get expenses breakdown by category for a date range
+ */
+async function getExpensesByCategory(
+	userId: string,
+	params: GetExpensesByCategoryParams,
+) {
+	const db = getDb();
+
+	// Parse dates and create timezone-aware boundaries
+	const [startYear, startMonth, startDay] = params.startDate
+		.split("-")
+		.map(Number);
+	const [endYear, endMonth, endDay] = params.endDate.split("-").map(Number);
+
+	const startUTC = new Date(
+		Date.UTC(startYear, startMonth - 1, startDay, 5, 0, 0, 0),
+	);
+	const endUTC = new Date(
+		Date.UTC(endYear, endMonth - 1, endDay + 1, 5, 0, 0, 0),
+	);
+
+	const entries = await db.query.expenses.findMany({
 		where: and(
-			eq(schema.foodEntries.userId, userId),
-			gte(schema.foodEntries.eatenAt, startOfDayUTC),
-			lt(schema.foodEntries.eatenAt, endOfDayUTC),
+			eq(schema.expenses.userId, userId),
+			gte(schema.expenses.spentAt, startUTC),
+			lt(schema.expenses.spentAt, endUTC),
 		),
 	});
 
-	// Calculate totals
-	const totals = entries.reduce(
-		(acc, entry) => ({
-			calories: acc.calories + Number(entry.calories),
-			protein: acc.protein + Number(entry.protein),
-			carbs: acc.carbs + Number(entry.carbs),
-			fat: acc.fat + Number(entry.fat),
-		}),
-		{ calories: 0, protein: 0, carbs: 0, fat: 0 },
-	);
+	// Group by category
+	const byCategory = new Map<
+		ExpenseCategory,
+		{ total: number; count: number }
+	>();
+
+	let totalAmount = 0;
+
+	for (const entry of entries) {
+		const amount = Number(entry.amount);
+		totalAmount += amount;
+
+		const existing = byCategory.get(entry.category) || { total: 0, count: 0 };
+		byCategory.set(entry.category, {
+			total: existing.total + amount,
+			count: existing.count + 1,
+		});
+	}
+
+	const categoryBreakdown: CategoryBreakdown[] = Array.from(
+		byCategory.entries(),
+	).map(([category, data]) => ({
+		category,
+		total: data.total,
+		count: data.count,
+	}));
 
 	return {
-		...totals,
+		periodLabel: "Custom Range",
+		startDate: new Date(params.startDate),
+		endDate: new Date(params.endDate),
+		totalAmount,
 		entryCount: entries.length,
+		byCategory: categoryBreakdown,
 	};
 }
 
@@ -435,6 +594,8 @@ export async function POST(request: Request) {
 		? message.text?.body
 		: message.image?.caption;
 
+	console.log({ userTextMessage });
+
 	// Get image data if present - use Kapso-mirrored URL from webhook payload
 	let imageData: { data: Buffer; mimeType: string } | null = null;
 	if (isImageMessage) {
@@ -477,50 +638,61 @@ export async function POST(request: Request) {
 		const currentTime = getColombiaTime();
 		const currentDateStr = currentTime.toISOString().split("T")[0];
 
-		// System prompt for the nutrition agent
-		const systemPrompt = `You are a friendly nutrition tracking assistant on WhatsApp for users in Colombia and Peru. Your job is to help users log their food intake and track their macronutrients.
+		// System prompt for the expense tracking agent
+		const systemPrompt = `You are a friendly expense tracking assistant on WhatsApp for users in Colombia and Peru. Your job is to help users log their expenses and track their spending.
 
 Current date/time in Colombia: ${currentTime.toISOString()}
 Current date: ${currentDateStr}
 
-WHEN A USER SENDS AN IMAGE OF FOOD:
-1. Analyze the image to identify the food items
-2. Estimate the portion size based on the visual appearance
-3. Search for each food item using the searchFood tool
-4. Log each item using the logFood tool with your best estimate of quantities
-5. If you can't identify a food clearly, ask the user for clarification
+WHEN A USER SENDS AN IMAGE OF A RECEIPT:
+1. Analyze the image to extract expense information
+2. Identify: the total amount, what was purchased, and the store/vendor name if visible
+3. Log the expense using the logExpense tool
+4. If you can't read the receipt clearly, ask the user for clarification
 
-WHEN A USER TELLS YOU THEY ATE SOMETHING:
-1. Use the searchFood tool to find the food in the database
-   - Search in Spanish for better results (e.g., "manzana" instead of "apple")
-   - If no results, try different terms or ask user for clarification
+WHEN A USER TELLS YOU THEY BOUGHT OR SPENT MONEY:
+1. Parse the message to extract:
+   - Amount (look for numbers with $, USD, dollars, bucks, etc.)
+   - What they bought (description)
+   - Where they bought it (vendor, if mentioned)
+   - When (default to now, but look for "yesterday", "last week", etc.)
 
-2. From the search results, pick the best match based on:
-   - The food name matching what the user described
-   - Prefer generic versions over branded unless user specified a brand
+2. Use the logExpense tool to record it:
+   - description: Brief description of what was purchased
+   - amount: The amount in USD
+   - category: Infer from context:
+     * food_dining: restaurants, groceries, coffee, food delivery, meals
+     * transportation: gas, uber, taxi, bus, car maintenance, parking
+     * shopping: electronics, clothes, furniture, online shopping, Amazon
+     * entertainment: movies, games, streaming (Netflix, Spotify), concerts, hobbies
+     * bills_utilities: electricity, water, internet, phone bill, rent, insurance
+     * health: medicine, doctor, pharmacy, gym membership, medical
+     * education: books, courses, tuition, school supplies, training
+     * travel: hotels, flights, vacation expenses, Airbnb
+     * other: anything that doesn't fit above
+   - vendor: Store or vendor name if mentioned
+   - spentAt: ISO timestamp, infer from context ("yesterday" = yesterday's date, "just now" = current time)
 
-3. Use the logFood tool to record it:
-   - Look at the "servings" array to find appropriate portion size
-   - Match user's quantity to available servings (e.g., "1 taza", "2 cucharadas")
-   - IMPORTANT: Multiply the macros by the quantity! If user ate 2 portions, double the calories/protein/carbs/fat
-   - servingSize should be the grams for one serving from the search results
-   - Set mealType based on time: breakfast (5-10am), lunch (11am-3pm), dinner (6-10pm), snack (other times)
-   - eatenAt: use current time if "just ate", or infer from context
+3. AFTER LOGGING AN EXPENSE:
+   - Keep your response short: just acknowledge or ask a follow-up
+   - Examples: "Got it!", "Logged!", "Anything else?", "That's a big purchase!"
+   - The image already shows all the details, don't repeat them
 
-4. AFTER LOGGING FOOD:
-   - DO NOT repeat the macros or give a summary - the image already shows all the details!
-   - Keep your response very short: just a brief acknowledgment or a friendly follow-up question
-   - Examples: "Got it!", "Logged!", "Anything else?", "How was it?", "What else did you have?"
-   - NO need to say "I've logged X with Y calories and Z protein..." - that's redundant
+WHEN USER ASKS ABOUT THEIR SPENDING:
+1. For period summaries ("how much this week?", "spending this month?"):
+   - Use getExpensesSummary with appropriate period (day, week, month, year)
+   
+2. For category breakdowns ("where is my money going?", "spending by category"):
+   - Use getExpensesByCategory with the date range
 
-WHEN USER ASKS ABOUT DAILY INTAKE/CALORIES:
-1. Use the getDailySummary tool with today's date (${currentDateStr})
+EXAMPLE MESSAGES AND RESPONSES:
+- "I just bought a new laptop for 1200 dollars at Best Buy" -> Log as shopping, $1200, vendor: Best Buy
+- "Spent 25 on lunch" -> Log as food_dining, $25
+- "Paid my electricity bill 150 bucks" -> Log as bills_utilities, $150
+- "How much did I spend this week?" -> Use getExpensesSummary with period: "week"
+- "Show me my spending by category this month" -> Use getExpensesByCategory
 
-IF FOOD NOT FOUND:
-- Ask user to be more specific or try a different name
-- Suggest searching in Spanish if they used English
-
-Be concise and friendly. The image shows all the nutritional details, so don't repeat them in text!`;
+Be concise and friendly. All amounts are in USD.`;
 
 		// Build the user message content (text and/or image)
 		type MessageContent =
@@ -547,10 +719,10 @@ Be concise and friendly. The image shows all the nutritional details, so don't r
 			if (userTextMessage) {
 				parts.push({ type: "text", text: userTextMessage });
 			} else {
-				// If no caption, ask the model to identify and log the food
+				// If no caption, ask the model to identify and log the expense
 				parts.push({
 					type: "text",
-					text: "What food is this? Please log it for me.",
+					text: "This is a receipt. Please extract the expense information and log it for me.",
 				});
 			}
 
@@ -579,34 +751,30 @@ Be concise and friendly. The image shows all the nutritional details, so don't r
 		// Process tool calls
 		for (const step of result.steps) {
 			for (const toolResult of step.toolResults) {
-				if (toolResult.toolName === "logFood") {
-					const logParams = toolResult.output as LogFoodParams;
+				if (toolResult.toolName === "logExpense") {
+					const logParams = toolResult.output as LogExpenseParams;
 
 					// Save to database
-					const entry = await saveFoodEntry(
+					const entry = await saveExpense(
 						user.id,
 						logParams,
-						userTextMessage || "Image of food",
+						userTextMessage || "Receipt image",
 					);
 
 					// Generate image
-					const foodAddedData: FoodAddedData = {
-						foodName: logParams.foodName,
-						quantity: logParams.quantity,
-						unit: logParams.unit,
-						calories: logParams.calories,
-						protein: logParams.protein,
-						carbs: logParams.carbs,
-						fat: logParams.fat,
-						fiber: logParams.fiber,
-						mealType: logParams.mealType as MealType,
-						eatenAt: new Date(logParams.eatenAt),
+					const expenseAddedData: ExpenseAddedData = {
+						description: logParams.description,
+						amount: logParams.amount,
+						currency: "USD",
+						category: logParams.category,
+						vendor: logParams.vendor,
+						spentAt: new Date(logParams.spentAt),
 					};
 
-					const imageBuffer = await renderFoodAdded(foodAddedData);
+					const imageBuffer = await renderExpenseAdded(expenseAddedData);
 					const imageUrl = await uploadImage(
 						imageBuffer,
-						`food-added-${entry.id}.png`,
+						`expense-added-${entry.id}.png`,
 					);
 
 					// Send image via WhatsApp
@@ -617,29 +785,29 @@ Be concise and friendly. The image shows all the nutritional details, so don't r
 							link: imageUrl,
 						},
 					});
-				} else if (toolResult.toolName === "getDailySummary") {
-					const summaryParams = toolResult.output as {
-						date: string;
+				} else if (toolResult.toolName === "getExpensesSummary") {
+					const summaryParams = toolResult.output as GetExpensesSummaryParams & {
 						action: string;
 					};
 
 					// Get summary from database
-					const summary = await getDailySummary(user.id, summaryParams.date);
+					const summary = await getExpensesSummary(user.id, summaryParams);
 
 					// Generate image
-					const summaryData: DailySummaryData = {
-						date: new Date(summaryParams.date),
-						totalCalories: summary.calories,
-						totalProtein: summary.protein,
-						totalCarbs: summary.carbs,
-						totalFat: summary.fat,
+					const summaryData: ExpensesSummaryData = {
+						periodLabel: summary.periodLabel,
+						startDate: summary.startDate,
+						endDate: summary.endDate,
+						totalAmount: summary.totalAmount,
+						currency: "USD",
 						entryCount: summary.entryCount,
+						byCategory: summary.byCategory,
 					};
 
-					const imageBuffer = await renderDailySummary(summaryData);
+					const imageBuffer = await renderExpensesSummary(summaryData);
 					const imageUrl = await uploadImage(
 						imageBuffer,
-						`daily-summary-${user.id}-${summaryParams.date}.png`,
+						`expenses-summary-${user.id}-${Date.now()}.png`,
 					);
 
 					// Send image via WhatsApp
@@ -648,7 +816,40 @@ Be concise and friendly. The image shows all the nutritional details, so don't r
 						to: senderNumber,
 						image: {
 							link: imageUrl,
-							caption: `Daily Summary: ${summary.calories} kcal`,
+						},
+					});
+				} else if (toolResult.toolName === "getExpensesByCategory") {
+					const categoryParams =
+						toolResult.output as GetExpensesByCategoryParams & {
+							action: string;
+						};
+
+					// Get breakdown from database
+					const breakdown = await getExpensesByCategory(user.id, categoryParams);
+
+					// Generate image
+					const summaryData: ExpensesSummaryData = {
+						periodLabel: breakdown.periodLabel,
+						startDate: breakdown.startDate,
+						endDate: breakdown.endDate,
+						totalAmount: breakdown.totalAmount,
+						currency: "USD",
+						entryCount: breakdown.entryCount,
+						byCategory: breakdown.byCategory,
+					};
+
+					const imageBuffer = await renderExpensesSummary(summaryData);
+					const imageUrl = await uploadImage(
+						imageBuffer,
+						`expenses-by-category-${user.id}-${Date.now()}.png`,
+					);
+
+					// Send image via WhatsApp
+					await whatsappClient.messages.sendImage({
+						phoneNumberId,
+						to: senderNumber,
+						image: {
+							link: imageUrl,
 						},
 					});
 				}
