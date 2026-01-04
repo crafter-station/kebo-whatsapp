@@ -42,20 +42,20 @@ export const colors = {
 	income: "#10B981", // Green for income (future)
 };
 
-// Category info with colors and labels
+// Category info with colors and icons (labels are now in i18n)
 export const categoryInfo: Record<
 	ExpenseCategory,
-	{ label: string; color: string; icon: string }
+	{ color: string; icon: string }
 > = {
-	food_dining: { label: "Food & Dining", color: "#F59E0B", icon: "F" },
-	transportation: { label: "Transportation", color: "#3B82F6", icon: "T" },
-	shopping: { label: "Shopping", color: "#EC4899", icon: "S" },
-	entertainment: { label: "Entertainment", color: "#8B5CF6", icon: "E" },
-	bills_utilities: { label: "Bills & Utilities", color: "#6366F1", icon: "B" },
-	health: { label: "Health", color: "#10B981", icon: "H" },
-	education: { label: "Education", color: "#06B6D4", icon: "Ed" },
-	travel: { label: "Travel", color: "#F97316", icon: "Tr" },
-	other: { label: "Other", color: "#6B7280", icon: "O" },
+	food_dining: { color: "#F59E0B", icon: "F" },
+	transportation: { color: "#3B82F6", icon: "T" },
+	shopping: { color: "#EC4899", icon: "S" },
+	entertainment: { color: "#8B5CF6", icon: "E" },
+	bills_utilities: { color: "#6366F1", icon: "B" },
+	health: { color: "#10B981", icon: "H" },
+	education: { color: "#06B6D4", icon: "Ed" },
+	travel: { color: "#F97316", icon: "Tr" },
+	other: { color: "#6B7280", icon: "O" },
 };
 
 /**
@@ -80,8 +80,8 @@ export function formatNumber(num: number): string {
 /**
  * Format date for display
  */
-export function formatDate(date: Date): string {
-	return new Intl.DateTimeFormat("en-US", {
+export function formatDate(date: Date, locale = "en-US"): string {
+	return new Intl.DateTimeFormat(locale, {
 		weekday: "long",
 		month: "short",
 		day: "numeric",
@@ -91,8 +91,8 @@ export function formatDate(date: Date): string {
 /**
  * Format time for display
  */
-export function formatTime(date: Date): string {
-	return new Intl.DateTimeFormat("en-US", {
+export function formatTime(date: Date, locale = "en-US"): string {
+	return new Intl.DateTimeFormat(locale, {
 		hour: "numeric",
 		minute: "2-digit",
 		hour12: true,

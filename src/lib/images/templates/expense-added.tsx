@@ -7,7 +7,11 @@ import {
 	formatTime,
 	renderToPng,
 } from "../index";
-import { getTranslations, type SupportedLocale } from "@/lib/i18n";
+import {
+	getTranslations,
+	getCategoryName,
+	type SupportedLocale,
+} from "@/lib/i18n";
 
 export interface ExpenseAddedData {
 	description: string;
@@ -26,6 +30,8 @@ function ExpenseAddedTemplate({
 }): ReactElement {
 	const category = categoryInfo[data.category];
 	const t = getTranslations(data.language || "en");
+	const locale = data.language === "es" ? "es-ES" : "en-US";
+	const categoryName = getCategoryName(data.category, data.language || "en");
 
 	return (
 		<div
@@ -177,7 +183,7 @@ function ExpenseAddedTemplate({
 							color: colors.text,
 						}}
 					>
-						{category.label}
+						{categoryName}
 					</span>
 				</div>
 
@@ -198,7 +204,7 @@ function ExpenseAddedTemplate({
 						color: colors.textSecondary,
 					}}
 				>
-					{formatTime(data.spentAt)}
+					{formatTime(data.spentAt, locale)}
 				</span>
 			</div>
 		</div>

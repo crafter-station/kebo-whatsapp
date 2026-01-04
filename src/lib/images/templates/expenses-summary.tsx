@@ -10,6 +10,8 @@ import {
 import {
 	getTranslations,
 	formatExpenseCount,
+	translatePeriodLabel,
+	getCategoryName,
 	type SupportedLocale,
 } from "@/lib/i18n";
 
@@ -36,15 +38,18 @@ function CategoryBar({
 	count,
 	maxTotal,
 	currency,
+	language,
 }: {
 	category: ExpenseCategory;
 	total: number;
 	count: number;
 	maxTotal: number;
 	currency: string;
+	language?: SupportedLocale;
 }): ReactElement {
 	const info = categoryInfo[category];
 	const percentage = maxTotal > 0 ? (total / maxTotal) * 100 : 0;
+	const categoryName = getCategoryName(category, language || "en");
 
 	return (
 		<div
@@ -87,7 +92,7 @@ function CategoryBar({
 							color: colors.text,
 						}}
 					>
-						{info.label}
+						{categoryName}
 					</span>
 					<span
 						style={{
@@ -139,6 +144,11 @@ function ExpensesSummaryTemplate({
 	data: ExpensesSummaryData;
 }): ReactElement {
 	const t = getTranslations(data.language || "en");
+	const locale = data.language === "es" ? "es-ES" : "en-US";
+	const translatedPeriodLabel = translatePeriodLabel(
+		data.periodLabel,
+		data.language || "en",
+	);
 
 	// Sort categories by total, descending
 	const sortedCategories = [...data.byCategory].sort(
@@ -175,7 +185,7 @@ function ExpensesSummaryTemplate({
 						marginBottom: "4px",
 					}}
 				>
-					{data.periodLabel}
+					{translatedPeriodLabel}
 				</span>
 				<span
 					style={{
@@ -183,7 +193,7 @@ function ExpensesSummaryTemplate({
 						color: colors.textSecondary,
 					}}
 				>
-					{formatDate(data.startDate)} - {formatDate(data.endDate)}
+					{formatDate(data.startDate, locale)} - {formatDate(data.endDate, locale)}
 				</span>
 			</div>
 
@@ -244,6 +254,7 @@ function ExpensesSummaryTemplate({
 							count={cat.count}
 							maxTotal={maxCategoryTotal}
 							currency={data.currency}
+							language={data.language}
 						/>
 					))}
 				</div>
