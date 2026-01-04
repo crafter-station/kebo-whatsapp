@@ -1,6 +1,11 @@
+import { openai } from "@ai-sdk/openai";
 import { WhatsAppClient } from "@kapso/whatsapp-cloud-api";
 import { put } from "@vercel/blob";
-import { generateText, stepCountIs } from "ai";
+import {
+	experimental_transcribe as transcribe,
+	generateText,
+	stepCountIs,
+} from "ai";
 import { and, eq, gte, lt } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { ExpenseCategory } from "@/db/schema";
@@ -18,10 +23,6 @@ import {
 	renderExpensesSummary,
 } from "@/lib/images";
 import { logger } from "@/lib/logger";
-import {
-	downloadAudioFromUrl,
-	transcribeAudio,
-} from "@/lib/audio/transcription";
 
 // Initialize WhatsApp client lazily
 function getWhatsAppClient() {
@@ -168,6 +169,76 @@ async function downloadMediaFromUrl(
 		};
 	} catch (error) {
 		console.error("[downloadMediaFromUrl] Error:", error);
+		return null;
+	}
+}
+
+/**
+ * Download audio from a URL (Kapso-mirrored or direct)
+ */
+async function downloadAudioFromUrl(
+	url: string,
+	contentType?: string,
+): Promise<{ data: Buffer; mimeType: string } | null> {
+	try {
+		console.log(
+			"[downloadAudioFromUrl] Downloading from:",
+			url.substring(0, 80) + "...",
+		);
+
+		const response = await fetch(url);
+
+		if (!response.ok) {
+			console.error("[downloadAudioFromUrl] Failed:", response.status);
+			return null;
+		}
+
+		const arrayBuffer = await response.arrayBuffer();
+		const buffer = Buffer.from(arrayBuffer);
+
+		console.log("[downloadAudioFromUrl] Downloaded bytes:", buffer.length);
+
+		// Validate we got actual audio data
+		if (buffer.length < 100) {
+			console.error(
+				"[downloadAudioFromUrl] Data too small, likely not audio",
+			);
+			return null;
+		}
+
+		// Use provided content type or response header
+		const mimeType =
+			contentType || response.headers.get("content-type") || "audio/ogg";
+
+		console.log("[downloadAudioFromUrl] Mime type:", mimeType);
+
+		return {
+			data: buffer,
+			mimeType,
+		};
+	} catch (error) {
+		console.error("[downloadAudioFromUrl] Error:", error);
+		return null;
+	}
+}
+
+/**
+ * Transcribe audio using OpenAI Whisper
+ */
+async function transcribeAudio(audioBuffer: Buffer): Promise<string | null> {
+	try {
+		console.log("[transcribeAudio] Starting transcription...");
+
+		const result = await transcribe({
+			model: openai.transcription("whisper-1"),
+			audio: audioBuffer,
+		});
+
+		console.log("[transcribeAudio] Transcription result:", result.text);
+
+		return result.text;
+	} catch (error) {
+		console.error("[transcribeAudio] Error:", error);
 		return null;
 	}
 }
@@ -578,15 +649,16 @@ export async function POST(request: Request) {
 		phoneNumberId = payload.phone_number_id;
 	}
 
-	// Only respond to inbound text or image messages
+	// Only respond to inbound text, image, or audio messages
 	if (message?.kapso?.direction !== "inbound") {
 		return new Response("OK", { status: 200 });
 	}
 
 	const isTextMessage = message?.type === "text";
 	const isImageMessage = message?.type === "image";
+	const isAudioMessage = message?.type === "audio";
 
-	if (!isTextMessage && !isImageMessage) {
+	if (!isTextMessage && !isImageMessage && !isAudioMessage) {
 		return new Response("OK", { status: 200 });
 	}
 
@@ -597,7 +669,7 @@ export async function POST(request: Request) {
 	}
 
 	// Get text content from message
-	const userTextMessage = isTextMessage
+	let userTextMessage = isTextMessage
 		? message.text?.body
 		: message.image?.caption;
 
@@ -608,6 +680,7 @@ export async function POST(request: Request) {
 		type: message.type,
 		hasText: !!userTextMessage,
 		hasImage: isImageMessage,
+		hasAudio: isAudioMessage,
 		textContent: userTextMessage,
 		conversationId: conversation?.id,
 	});
@@ -628,7 +701,31 @@ export async function POST(request: Request) {
 		}
 	}
 
-	// Need either text or image to proceed
+	// Get audio data and transcribe if present
+	let transcribedText: string | null = null;
+	if (isAudioMessage) {
+		const mediaUrl = message.kapso?.media_url || message.kapso?.media_data?.url;
+
+		if (mediaUrl) {
+			const audioData = await downloadAudioFromUrl(
+				mediaUrl,
+				message.kapso?.media_data?.content_type || message.audio?.mime_type,
+			);
+
+			if (audioData) {
+				transcribedText = await transcribeAudio(audioData.data);
+				if (transcribedText) {
+					// Use transcribed text as the user message
+					userTextMessage = transcribedText;
+					console.log("[POST] Transcribed audio:", transcribedText);
+				}
+			}
+		} else {
+			console.error("[POST] No media URL in webhook payload for audio message");
+		}
+	}
+
+	// Need either text, image, or transcribed audio to proceed
 	if (!userTextMessage && !imageData) {
 		return new Response("OK", { status: 200 });
 	}
@@ -672,6 +769,11 @@ WHEN A USER SENDS AN IMAGE OF A RECEIPT:
 3. Detect the language from any text in the image or caption
 4. Log the expense using the logExpense tool with the detected language
 5. If you can't read the receipt clearly, ask the user for clarification
+
+WHEN A USER SENDS A VOICE MESSAGE:
+- Voice messages are automatically transcribed before reaching you
+- Treat the transcribed text as if the user typed it directly
+- Process it normally to log expenses or answer questions
 
 WHEN A USER TELLS YOU THEY BOUGHT OR SPENT MONEY:
 1. Parse the message to extract:
@@ -825,11 +927,10 @@ Be concise and friendly. All amounts are in USD. Always respond in the same lang
 					const logParams = toolResult.output as LogExpenseParams;
 
 					// Save to database
-					const entry = await saveExpense(
-						user.id,
-						logParams,
-						userTextMessage || "Receipt image",
-					);
+					const rawMessage = transcribedText
+						? `[Voice message] ${transcribedText}`
+						: userTextMessage || "Receipt image";
+					const entry = await saveExpense(user.id, logParams, rawMessage);
 
 					logger.logExpenseSaved(
 						entry.id,
