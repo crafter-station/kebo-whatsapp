@@ -17,6 +17,11 @@ import {
 	renderExpenseAdded,
 	renderExpensesSummary,
 } from "@/lib/images";
+import { logger } from "@/lib/logger";
+import {
+	downloadAudioFromUrl,
+	transcribeAudio,
+} from "@/lib/audio/transcription";
 
 // Initialize WhatsApp client lazily
 function getWhatsAppClient() {
@@ -37,6 +42,8 @@ interface KapsoWebhookMessage {
 	type: string;
 	text?: { body: string };
 	image?: { id: string; mime_type?: string; sha256?: string; caption?: string };
+	audio?: { id: string; mime_type?: string; sha256?: string };
+	voice?: { id: string; mime_type?: string; sha256?: string };
 	from: string;
 	kapso?: {
 		direction: "inbound" | "outbound";
@@ -594,7 +601,16 @@ export async function POST(request: Request) {
 		? message.text?.body
 		: message.image?.caption;
 
-	console.log({ userTextMessage });
+	// Log incoming message details
+	logger.logIncomingMessage({
+		messageId: message.id,
+		from: senderNumber,
+		type: message.type,
+		hasText: !!userTextMessage,
+		hasImage: isImageMessage,
+		textContent: userTextMessage,
+		conversationId: conversation?.id,
+	});
 
 	// Get image data if present - use Kapso-mirrored URL from webhook payload
 	let imageData: { data: Buffer; mimeType: string } | null = null;
@@ -746,6 +762,44 @@ Be concise and friendly. All amounts are in USD.`;
 			stopWhen: stepCountIs(5),
 		});
 
+		// Log AI processing and category decision
+		const toolCalls = result.steps.flatMap((step) =>
+			step.toolResults.map((toolResult) => ({
+				toolName: toolResult.toolName,
+				category:
+					toolResult.toolName === "logExpense"
+						? (toolResult.output as LogExpenseParams).category
+						: undefined,
+				description:
+					toolResult.toolName === "logExpense"
+						? (toolResult.output as LogExpenseParams).description
+						: undefined,
+				amount:
+					toolResult.toolName === "logExpense"
+						? (toolResult.output as LogExpenseParams).amount
+						: undefined,
+				vendor:
+					toolResult.toolName === "logExpense"
+						? (toolResult.output as LogExpenseParams).vendor
+						: undefined,
+			})),
+		);
+
+		logger.logCategoryDecision({
+			messageId: message.id,
+			userMessage:
+				typeof userContent === "string"
+					? userContent
+					: userContent
+							.filter((part) => part.type === "text")
+							.map((part) => (part.type === "text" ? part.text : ""))
+							.join(" "),
+			aiResponse: result.text || "(No text response)",
+			toolCalls,
+			stepCount: result.steps.length,
+			modelUsed: "claude-haiku-4.5",
+		});
+
 		const whatsappClient = getWhatsAppClient();
 
 		// Process tool calls
@@ -761,6 +815,13 @@ Be concise and friendly. All amounts are in USD.`;
 						userTextMessage || "Receipt image",
 					);
 
+					logger.logExpenseSaved(
+						entry.id,
+						logParams.category,
+						logParams.amount,
+						logParams.description,
+					);
+
 					// Generate image
 					const expenseAddedData: ExpenseAddedData = {
 						description: logParams.description,
@@ -772,6 +833,8 @@ Be concise and friendly. All amounts are in USD.`;
 					};
 
 					const imageBuffer = await renderExpenseAdded(expenseAddedData);
+					logger.logImageGenerated("expense-added");
+
 					const imageUrl = await uploadImage(
 						imageBuffer,
 						`expense-added-${entry.id}.png`,
@@ -785,6 +848,8 @@ Be concise and friendly. All amounts are in USD.`;
 							link: imageUrl,
 						},
 					});
+
+					logger.logMessageSent(senderNumber, "image");
 				} else if (toolResult.toolName === "getExpensesSummary") {
 					const summaryParams = toolResult.output as GetExpensesSummaryParams & {
 						action: string;
@@ -805,6 +870,8 @@ Be concise and friendly. All amounts are in USD.`;
 					};
 
 					const imageBuffer = await renderExpensesSummary(summaryData);
+					logger.logImageGenerated("summary");
+
 					const imageUrl = await uploadImage(
 						imageBuffer,
 						`expenses-summary-${user.id}-${Date.now()}.png`,
@@ -818,6 +885,8 @@ Be concise and friendly. All amounts are in USD.`;
 							link: imageUrl,
 						},
 					});
+
+					logger.logMessageSent(senderNumber, "image");
 				} else if (toolResult.toolName === "getExpensesByCategory") {
 					const categoryParams =
 						toolResult.output as GetExpensesByCategoryParams & {
@@ -839,6 +908,8 @@ Be concise and friendly. All amounts are in USD.`;
 					};
 
 					const imageBuffer = await renderExpensesSummary(summaryData);
+					logger.logImageGenerated("category-breakdown");
+
 					const imageUrl = await uploadImage(
 						imageBuffer,
 						`expenses-by-category-${user.id}-${Date.now()}.png`,
@@ -852,6 +923,8 @@ Be concise and friendly. All amounts are in USD.`;
 							link: imageUrl,
 						},
 					});
+
+					logger.logMessageSent(senderNumber, "image");
 				}
 			}
 		}
@@ -863,9 +936,13 @@ Be concise and friendly. All amounts are in USD.`;
 				to: senderNumber,
 				body: result.text,
 			});
+
+			logger.logMessageSent(senderNumber, "text", result.text);
 		}
+
+		logger.logSeparator();
 	} catch (error) {
-		console.error("Error processing message:", error);
+		logger.logError("POST /webhook", error);
 
 		// Send error message to user
 		try {
@@ -875,8 +952,13 @@ Be concise and friendly. All amounts are in USD.`;
 				to: senderNumber,
 				body: "Sorry, I had trouble processing that. Could you try again?",
 			});
+			logger.logMessageSent(
+				senderNumber,
+				"text",
+				"Error message sent to user",
+			);
 		} catch (sendError) {
-			console.error("Error sending error message:", sendError);
+			logger.logError("Sending error message", sendError);
 		}
 	}
 
