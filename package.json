@@ -13,6 +13,7 @@
     "@neondatabase/serverless": "^1.0.2",
     "@vercel/blob": "^2.0.0",
     "ai": "^6.0.6",
+    "drizzle-kit": "^0.31.8",
     "drizzle-orm": "^0.45.1",
     "next": "16.1.1",
     "react": "19.2.3",
