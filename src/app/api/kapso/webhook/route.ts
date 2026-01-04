@@ -577,6 +577,7 @@ async function uploadImage(buffer: Buffer, filename: string): Promise<string> {
 		contentType: "image/png",
 		addRandomSuffix: true,
 	});
+	console.log("[uploadImage] Image uploaded to Vercel Blob:", blob.url);
 	return blob.url;
 }
 
@@ -951,12 +952,19 @@ Be concise and friendly. All amounts are in USD. Always respond in the same lang
 					};
 
 					const imageBuffer = await renderExpenseAdded(expenseAddedData);
+					console.log("[POST] Image buffer generated, size:", imageBuffer.length, "bytes");
 					logger.logImageGenerated("expense-added");
 
 					const imageUrl = await uploadImage(
 						imageBuffer,
 						`expense-added-${entry.id}.png`,
 					);
+
+					console.log("[POST] Sending expense image to WhatsApp:", {
+						to: senderNumber,
+						imageUrl,
+						phoneNumberId,
+					});
 
 					// Send image via WhatsApp
 					await whatsappClient.messages.sendImage({
@@ -967,6 +975,7 @@ Be concise and friendly. All amounts are in USD. Always respond in the same lang
 						},
 					});
 
+					console.log("[POST] Image sent successfully to WhatsApp");
 					logger.logMessageSent(senderNumber, "image");
 				} else if (toolResult.toolName === "getExpensesSummary") {
 					const summaryParams = toolResult.output as GetExpensesSummaryParams & {

@@ -49,8 +49,38 @@ function ExpenseAddedTemplate({
 				backgroundColor: colors.background,
 				padding: "40px",
 				fontFamily: "Inter",
+				position: "relative",
 			}}
 		>
+			{/* Kebo Logo - Top Right */}
+			<div
+				style={{
+					position: "absolute",
+					top: "20px",
+					right: "20px",
+					display: "flex",
+					alignItems: "center",
+					gap: "8px",
+				}}
+			>
+				<div
+					style={{
+						display: "flex",
+						alignItems: "center",
+						justifyContent: "center",
+						width: "40px",
+						height: "40px",
+						borderRadius: "8px",
+						backgroundColor: brandPurple,
+					}}
+				>
+					<span style={{ fontSize: "28px", color: "white", fontWeight: 700 }}>K</span>
+				</div>
+				<span style={{ fontSize: "24px", fontWeight: 700, color: brandPurple }}>
+					ebo
+				</span>
+			</div>
+
 			{/* Header */}
 			<div
 				style={{
