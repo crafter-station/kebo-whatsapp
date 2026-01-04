@@ -1,86 +1,89 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { type FitiaFood, searchFoods } from "../fitia";
 
-// Define schemas separately for type inference
-const searchFoodSchema = z.object({
-	query: z
-		.string()
-		.describe(
-			"The food name to search for in English or Spanish. Be specific (e.g., 'manzana roja' instead of just 'apple')",
-		),
-});
+// Expense categories
+const expenseCategories = [
+	"food_dining",
+	"transportation",
+	"shopping",
+	"entertainment",
+	"bills_utilities",
+	"health",
+	"education",
+	"travel",
+	"other",
+] as const;
 
-const logFoodSchema = z.object({
-	foodId: z.string().describe("The food ID from the search results"),
-	foodName: z.string().describe("The name of the food"),
-	quantity: z.number().describe("The quantity eaten (e.g., 1, 2, 0.5)"),
-	unit: z
+// Define schemas for expense tracking
+const logExpenseSchema = z.object({
+	description: z
 		.string()
+		.describe("Brief description of the expense (e.g., 'New MacBook Pro')"),
+	amount: z.number().positive().describe("Amount spent in USD"),
+	category: z
+		.enum(expenseCategories)
 		.describe(
-			"The unit of measurement from the search results (e.g., 'porcion', 'taza', 'gramos')",
+			"Expense category: food_dining, transportation, shopping, entertainment, bills_utilities, health, education, travel, or other",
 		),
-	servingSize: z
-		.number()
-		.describe("The size of one serving in grams from the search results"),
-	calories: z.number().describe("Total calories for the quantity eaten"),
-	protein: z.number().describe("Total protein in grams for the quantity eaten"),
-	carbs: z.number().describe("Total carbs in grams for the quantity eaten"),
-	fat: z.number().describe("Total fat in grams for the quantity eaten"),
-	fiber: z
-		.number()
+	vendor: z
+		.string()
 		.optional()
-		.describe("Total fiber in grams for the quantity eaten"),
-	mealType: z
-		.enum(["breakfast", "lunch", "dinner", "snack"])
-		.describe("The type of meal based on the time or context"),
-	eatenAt: z
+		.describe("Store or vendor name if mentioned (e.g., 'Apple Store', 'Amazon')"),
+	spentAt: z
 		.string()
 		.describe(
-			"ISO timestamp of when the food was eaten, inferred from context",
+			"ISO timestamp of when money was spent, inferred from context (default to now if not specified)",
 		),
 });
 
-const getDailySummarySchema = z.object({
-	date: z.string().describe("The date to get summary for in YYYY-MM-DD format"),
+const getExpensesSummarySchema = z.object({
+	period: z
+		.enum(["day", "week", "month", "year"])
+		.describe("Time period for the summary"),
+	date: z
+		.string()
+		.optional()
+		.describe("Reference date in YYYY-MM-DD format (defaults to today)"),
+	category: z
+		.enum(expenseCategories)
+		.optional()
+		.describe("Optional: filter by specific category"),
+});
+
+const getExpensesByCategorySchema = z.object({
+	startDate: z.string().describe("Start date in YYYY-MM-DD format"),
+	endDate: z.string().describe("End date in YYYY-MM-DD format"),
 });
 
 // Export types
-export type SearchFoodParams = z.infer<typeof searchFoodSchema>;
-export type LogFoodParams = z.infer<typeof logFoodSchema>;
-export type GetDailySummaryParams = z.infer<typeof getDailySummarySchema>;
+export type LogExpenseParams = z.infer<typeof logExpenseSchema>;
+export type GetExpensesSummaryParams = z.infer<typeof getExpensesSummarySchema>;
+export type GetExpensesByCategoryParams = z.infer<
+	typeof getExpensesByCategorySchema
+>;
 
 /**
- * Tool for searching foods in the Fitia database
+ * Tool for logging an expense
  */
-export const searchFoodTool = tool<SearchFoodParams, FitiaFood[]>({
-	description: `Search for a food in the nutrition database to get its macronutrient information.
-The results include:
-- name: Food name
-- brand: Brand name if applicable
-- servingName: Default serving name (e.g., "porcion", "taza")
-- servingSize: Size of one serving in grams
-- calories, protein, carbs, fat: Macros for ONE default serving
-- servings: Array of all available serving options with their macros
+export const logExpenseTool = tool<LogExpenseParams, LogExpenseParams>({
+	description: `Log an expense when a user mentions they bought or spent money on something.
+Examples of user messages:
+- "I just bought a new computer for 500 dollars"
+- "Spent 25 on lunch today"
+- "Paid 150 for electricity bill"
+- "Got groceries for 80 bucks yesterday"
 
-IMPORTANT: The macros returned are for ONE serving. If the user ate multiple servings, multiply accordingly.
-For example, if user ate "2 manzanas" and the serving is "1 unidad" with 95 calories, log 190 calories total.`,
-	inputSchema: searchFoodSchema,
-	execute: async (params) => {
-		const results = await searchFoods(params.query);
-		// Return top 5 results to keep context manageable
-		return results.slice(0, 5);
-	},
-});
-
-/**
- * Tool for logging a food entry
- */
-export const logFoodTool = tool<LogFoodParams, LogFoodParams>({
-	description: `Log a food entry after finding it in the database.
-IMPORTANT: Calculate the total macros based on the quantity the user ate.
-If user ate 2 servings and each serving has 100 calories, log 200 calories total.`,
-	inputSchema: logFoodSchema,
+Infer the category from context:
+- food_dining: restaurants, groceries, coffee, food delivery
+- transportation: gas, uber, bus, car maintenance, parking
+- shopping: electronics, clothes, furniture, online shopping
+- entertainment: movies, games, streaming subscriptions, concerts
+- bills_utilities: electricity, water, internet, phone bill, rent
+- health: medicine, doctor visits, gym membership
+- education: books, courses, tuition, school supplies
+- travel: hotels, flights, vacation expenses
+- other: anything that doesn't fit above`,
+	inputSchema: logExpenseSchema,
 	execute: async (params) => {
 		// This will be handled by the webhook - we return the params for processing
 		return params;
@@ -88,23 +91,53 @@ If user ate 2 servings and each serving has 100 calories, log 200 calories total
 });
 
 /**
- * Tool for getting daily summary
+ * Tool for getting expenses summary
  */
-export const getDailySummaryTool = tool<
-	GetDailySummaryParams,
-	{ date: string; action: "get_daily_summary" }
+export const getExpensesSummaryTool = tool<
+	GetExpensesSummaryParams,
+	{ period: string; date?: string; category?: string; action: "get_expenses_summary" }
 >({
-	description:
-		"Get the daily calorie and macronutrient summary for a specific date. Use this when the user asks about their daily intake, calories consumed, etc.",
-	inputSchema: getDailySummarySchema,
+	description: `Get a summary of expenses for a specific time period.
+Use this when the user asks:
+- "How much did I spend this week?"
+- "What are my expenses this month?"
+- "Show me my spending for today"
+- "How much did I spend on food this month?"`,
+	inputSchema: getExpensesSummarySchema,
 	execute: async (params) => {
-		// This will be handled by the webhook
-		return { date: params.date, action: "get_daily_summary" as const };
+		return {
+			period: params.period,
+			date: params.date,
+			category: params.category,
+			action: "get_expenses_summary" as const,
+		};
+	},
+});
+
+/**
+ * Tool for getting expenses breakdown by category
+ */
+export const getExpensesByCategoryTool = tool<
+	GetExpensesByCategoryParams,
+	{ startDate: string; endDate: string; action: "get_expenses_by_category" }
+>({
+	description: `Get a breakdown of expenses by category for a date range.
+Use this when the user asks:
+- "Show me my spending by category"
+- "Where is my money going?"
+- "Breakdown of expenses this month"`,
+	inputSchema: getExpensesByCategorySchema,
+	execute: async (params) => {
+		return {
+			startDate: params.startDate,
+			endDate: params.endDate,
+			action: "get_expenses_by_category" as const,
+		};
 	},
 });
 
 export const tools = {
-	searchFood: searchFoodTool,
-	logFood: logFoodTool,
-	getDailySummary: getDailySummaryTool,
+	logExpense: logExpenseTool,
+	getExpensesSummary: getExpensesSummaryTool,
+	getExpensesByCategory: getExpensesByCategoryTool,
 };
