@@ -50,13 +50,14 @@ function CategoryBar({
 	const info = categoryInfo[category];
 	const percentage = maxTotal > 0 ? (total / maxTotal) * 100 : 0;
 	const categoryName = getCategoryName(category, language || "en");
+	const brandPurple = "#8B5CF6";
 
 	return (
 		<div
 			style={{
 				display: "flex",
 				flexDirection: "column",
-				marginBottom: "16px",
+				marginBottom: "18px",
 				width: "100%",
 			}}
 		>
@@ -65,7 +66,7 @@ function CategoryBar({
 					display: "flex",
 					justifyContent: "space-between",
 					alignItems: "center",
-					marginBottom: "8px",
+					marginBottom: "10px",
 				}}
 			>
 				<div style={{ display: "flex", alignItems: "center" }}>
@@ -74,31 +75,32 @@ function CategoryBar({
 							display: "flex",
 							alignItems: "center",
 							justifyContent: "center",
-							width: "24px",
-							height: "24px",
+							width: "32px",
+							height: "32px",
 							borderRadius: "50%",
-							backgroundColor: info.color,
-							marginRight: "8px",
+							backgroundColor: brandPurple,
+							marginRight: "12px",
 						}}
 					>
-						<span style={{ fontSize: "10px", fontWeight: 600, color: "white" }}>
+						<span style={{ fontSize: "13px", fontWeight: 600, color: "white" }}>
 							{info.icon}
 						</span>
 					</div>
 					<span
 						style={{
-							fontSize: "14px",
-							fontWeight: 500,
-							color: colors.text,
+							fontSize: "16px",
+							fontWeight: 600,
+							color: "#111827",
 						}}
 					>
 						{categoryName}
 					</span>
 					<span
 						style={{
-							fontSize: "12px",
-							color: colors.textSecondary,
-							marginLeft: "8px",
+							fontSize: "14px",
+							color: "#6B7280",
+							marginLeft: "10px",
+							fontWeight: 500,
 						}}
 					>
 						({count})
@@ -106,9 +108,9 @@ function CategoryBar({
 				</div>
 				<span
 					style={{
-						fontSize: "14px",
-						fontWeight: 600,
-						color: info.color,
+						fontSize: "16px",
+						fontWeight: 700,
+						color: "#EF4444",
 					}}
 				>
 					{formatCurrency(total, currency)}
@@ -118,9 +120,9 @@ function CategoryBar({
 				style={{
 					display: "flex",
 					width: "100%",
-					height: "8px",
-					borderRadius: "4px",
-					backgroundColor: colors.surface,
+					height: "10px",
+					borderRadius: "8px",
+					backgroundColor: "#F5F3FF",
 					overflow: "hidden",
 				}}
 			>
@@ -129,8 +131,8 @@ function CategoryBar({
 						display: "flex",
 						width: `${percentage}%`,
 						height: "100%",
-						backgroundColor: info.color,
-						borderRadius: "4px",
+						backgroundColor: brandPurple,
+						borderRadius: "8px",
 					}}
 				/>
 			</div>
@@ -149,6 +151,12 @@ function ExpensesSummaryTemplate({
 		data.periodLabel,
 		data.language || "en",
 	);
+
+	// Brand colors
+	const brandPurple = "#8B5CF6";
+	const brandLavender = "#F5F3FF";
+	const brandRed = "#EF4444";
+	const brandDarkText = "#111827";
 
 	// Sort categories by total, descending
 	const sortedCategories = [...data.byCategory].sort(
@@ -174,39 +182,29 @@ function ExpensesSummaryTemplate({
 				style={{
 					display: "flex",
 					flexDirection: "column",
-					marginBottom: "24px",
+					marginBottom: "28px",
 				}}
 			>
 				<span
 					style={{
-						fontSize: "24px",
-						fontWeight: 600,
-						color: colors.text,
-						marginBottom: "4px",
+						fontSize: "28px",
+						fontWeight: 700,
+						color: brandDarkText,
+						marginBottom: "6px",
 					}}
 				>
 					{translatedPeriodLabel}
 				</span>
 				<span
 					style={{
-						fontSize: "14px",
-						color: colors.textSecondary,
+						fontSize: "15px",
+						fontWeight: 500,
+						color: "#6B7280",
 					}}
 				>
 					{formatDate(data.startDate, locale)} - {formatDate(data.endDate, locale)}
 				</span>
 			</div>
-
-			{/* Divider */}
-			<div
-				style={{
-					display: "flex",
-					width: "100%",
-					height: "2px",
-					backgroundColor: colors.border,
-					marginBottom: "32px",
-				}}
-			/>
 
 			{/* Main total display */}
 			<div
@@ -214,25 +212,34 @@ function ExpensesSummaryTemplate({
 					display: "flex",
 					flexDirection: "column",
 					alignItems: "center",
-					marginBottom: "32px",
+					marginBottom: "36px",
+					padding: "24px",
+					borderRadius: "16px",
+					backgroundColor: brandLavender,
+					boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
 				}}
 			>
 				<span
 					style={{
-						fontSize: "56px",
-						fontWeight: 700,
-						color: colors.expense,
-					}}
-				>
-					{formatCurrency(data.totalAmount, data.currency)}
-				</span>
-				<span
-					style={{
-						fontSize: "16px",
-						color: colors.textSecondary,
+						fontSize: "14px",
+						fontWeight: 600,
+						color: brandPurple,
+						marginBottom: "8px",
+						textTransform: "uppercase",
+						letterSpacing: "0.5px",
 					}}
 				>
 					{t.totalSpent}
+				</span>
+				<span
+					style={{
+						fontSize: "52px",
+						fontWeight: 700,
+						color: brandRed,
+						lineHeight: 1,
+					}}
+				>
+					{formatCurrency(data.totalAmount, data.currency)}
 				</span>
 			</div>
 
@@ -265,16 +272,18 @@ function ExpensesSummaryTemplate({
 				style={{
 					display: "flex",
 					justifyContent: "center",
-					padding: "16px",
+					padding: "18px",
 					borderRadius: "12px",
-					backgroundColor: colors.surface,
+					backgroundColor: "#F9FAFB",
 					marginTop: "auto",
+					border: `2px solid ${brandLavender}`,
 				}}
 			>
 				<span
 					style={{
-						fontSize: "14px",
-						color: colors.textSecondary,
+						fontSize: "15px",
+						fontWeight: 600,
+						color: brandPurple,
 					}}
 				>
 					{data.entryCount} {formatExpenseCount(data.entryCount, data.language || "en")}{" "}

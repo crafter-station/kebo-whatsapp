@@ -33,6 +33,12 @@ function ExpenseAddedTemplate({
 	const locale = data.language === "es" ? "es-ES" : "en-US";
 	const categoryName = getCategoryName(data.category, data.language || "en");
 
+	// Brand colors
+	const brandPurple = "#8B5CF6";
+	const brandLavender = "#F5F3FF";
+	const brandRed = "#EF4444";
+	const brandDarkText = "#111827";
+
 	return (
 		<div
 			style={{
@@ -50,7 +56,7 @@ function ExpenseAddedTemplate({
 				style={{
 					display: "flex",
 					alignItems: "center",
-					marginBottom: "24px",
+					marginBottom: "32px",
 				}}
 			>
 				<div
@@ -58,36 +64,26 @@ function ExpenseAddedTemplate({
 						display: "flex",
 						alignItems: "center",
 						justifyContent: "center",
-						width: "48px",
-						height: "48px",
+						width: "52px",
+						height: "52px",
 						borderRadius: "50%",
-						backgroundColor: colors.expense,
+						backgroundColor: brandPurple,
 						marginRight: "16px",
+						border: `3px solid ${brandPurple}`,
 					}}
 				>
-					<span style={{ fontSize: "24px", color: "white" }}>$</span>
+					<span style={{ fontSize: "32px", color: "white", fontWeight: 700 }}>$</span>
 				</div>
 				<span
 					style={{
-						fontSize: "24px",
+						fontSize: "26px",
 						fontWeight: 600,
-						color: colors.text,
+						color: brandDarkText,
 					}}
 				>
 					{t.expenseLogged}
 				</span>
 			</div>
-
-			{/* Divider */}
-			<div
-				style={{
-					display: "flex",
-					width: "100%",
-					height: "2px",
-					backgroundColor: colors.border,
-					marginBottom: "32px",
-				}}
-			/>
 
 			{/* Amount - Large and prominent */}
 			<div
@@ -95,14 +91,15 @@ function ExpenseAddedTemplate({
 					display: "flex",
 					flexDirection: "column",
 					alignItems: "center",
-					marginBottom: "32px",
+					marginBottom: "24px",
 				}}
 			>
 				<span
 					style={{
-						fontSize: "56px",
+						fontSize: "64px",
 						fontWeight: 700,
-						color: colors.expense,
+						color: brandRed,
+						lineHeight: 1,
 					}}
 				>
 					{formatCurrency(data.amount, data.currency)}
@@ -114,14 +111,15 @@ function ExpenseAddedTemplate({
 				style={{
 					display: "flex",
 					flexDirection: "column",
-					marginBottom: "24px",
+					marginBottom: "32px",
+					alignItems: "center",
 				}}
 			>
 				<span
 					style={{
-						fontSize: "28px",
+						fontSize: "24px",
 						fontWeight: 600,
-						color: colors.text,
+						color: brandDarkText,
 						marginBottom: "8px",
 						textAlign: "center",
 					}}
@@ -131,8 +129,9 @@ function ExpenseAddedTemplate({
 				{data.vendor && (
 					<span
 						style={{
-							fontSize: "18px",
-							color: colors.textSecondary,
+							fontSize: "20px",
+							fontWeight: 500,
+							color: brandDarkText,
 							textAlign: "center",
 						}}
 					>
@@ -141,16 +140,16 @@ function ExpenseAddedTemplate({
 				)}
 			</div>
 
-			{/* Category and time info */}
+			{/* Category and time card */}
 			<div
 				style={{
 					display: "flex",
 					alignItems: "center",
-					justifyContent: "center",
-					gap: "24px",
-					padding: "16px 24px",
-					borderRadius: "12px",
-					backgroundColor: colors.surface,
+					justifyContent: "space-between",
+					padding: "20px 28px",
+					borderRadius: "16px",
+					backgroundColor: brandLavender,
+					boxShadow: "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
 				}}
 			>
 				{/* Category */}
@@ -165,43 +164,34 @@ function ExpenseAddedTemplate({
 							display: "flex",
 							alignItems: "center",
 							justifyContent: "center",
-							width: "36px",
-							height: "36px",
+							width: "40px",
+							height: "40px",
 							borderRadius: "50%",
-							backgroundColor: category.color,
-							marginRight: "12px",
+							backgroundColor: brandPurple,
+							marginRight: "14px",
 						}}
 					>
-						<span style={{ fontSize: "14px", fontWeight: 600, color: "white" }}>
+						<span style={{ fontSize: "16px", fontWeight: 600, color: "white" }}>
 							{category.icon}
 						</span>
 					</div>
 					<span
 						style={{
-							fontSize: "16px",
-							fontWeight: 500,
-							color: colors.text,
+							fontSize: "18px",
+							fontWeight: 600,
+							color: brandDarkText,
 						}}
 					>
 						{categoryName}
 					</span>
 				</div>
 
-				{/* Separator */}
-				<div
-					style={{
-						display: "flex",
-						width: "2px",
-						height: "24px",
-						backgroundColor: colors.border,
-					}}
-				/>
-
 				{/* Time */}
 				<span
 					style={{
 						fontSize: "16px",
-						color: colors.textSecondary,
+						fontWeight: 500,
+						color: "#6B7280",
 					}}
 				>
 					{formatTime(data.spentAt, locale)}
