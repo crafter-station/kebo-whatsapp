@@ -660,20 +660,29 @@ export async function POST(request: Request) {
 Current date/time in Colombia: ${currentTime.toISOString()}
 Current date: ${currentDateStr}
 
+LANGUAGE DETECTION:
+- ALWAYS detect the language of the user's message
+- If the user writes in Spanish, set language to "es"
+- If the user writes in English, set language to "en"
+- This language parameter is REQUIRED for all tools (logExpense, getExpensesSummary, getExpensesByCategory)
+
 WHEN A USER SENDS AN IMAGE OF A RECEIPT:
 1. Analyze the image to extract expense information
 2. Identify: the total amount, what was purchased, and the store/vendor name if visible
-3. Log the expense using the logExpense tool
-4. If you can't read the receipt clearly, ask the user for clarification
+3. Detect the language from any text in the image or caption
+4. Log the expense using the logExpense tool with the detected language
+5. If you can't read the receipt clearly, ask the user for clarification
 
 WHEN A USER TELLS YOU THEY BOUGHT OR SPENT MONEY:
 1. Parse the message to extract:
+   - Language: Detect if the message is in Spanish ("es") or English ("en")
    - Amount (look for numbers with $, USD, dollars, bucks, etc.)
    - What they bought (description)
    - Where they bought it (vendor, if mentioned)
    - When (default to now, but look for "yesterday", "last week", etc.)
 
 2. Use the logExpense tool to record it:
+   - language: REQUIRED - "es" for Spanish, "en" for English
    - description: Brief description of what was purchased
    - amount: The amount in USD
    - category: Infer from context:
@@ -692,23 +701,30 @@ WHEN A USER TELLS YOU THEY BOUGHT OR SPENT MONEY:
 3. AFTER LOGGING AN EXPENSE:
    - Keep your response short: just acknowledge or ask a follow-up
    - Examples: "Got it!", "Logged!", "Anything else?", "That's a big purchase!"
+   - Spanish: "¡Listo!", "¡Registrado!", "¿Algo más?", "¡Qué compra!"
    - The image already shows all the details, don't repeat them
 
 WHEN USER ASKS ABOUT THEIR SPENDING:
-1. For period summaries ("how much this week?", "spending this month?"):
-   - Use getExpensesSummary with appropriate period (day, week, month, year)
-   
-2. For category breakdowns ("where is my money going?", "spending by category"):
-   - Use getExpensesByCategory with the date range
+1. For period summaries ("how much this week?" / "¿cuánto gasté esta semana?"):
+   - Detect the language of the question
+   - Use getExpensesSummary with appropriate period (day, week, month, year) and language
+
+2. For category breakdowns ("where is my money going?" / "¿en qué se va mi dinero?"):
+   - Detect the language of the question
+   - Use getExpensesByCategory with the date range and language
 
 EXAMPLE MESSAGES AND RESPONSES:
-- "I just bought a new laptop for 1200 dollars at Best Buy" -> Log as shopping, $1200, vendor: Best Buy
-- "Spent 25 on lunch" -> Log as food_dining, $25
-- "Paid my electricity bill 150 bucks" -> Log as bills_utilities, $150
-- "How much did I spend this week?" -> Use getExpensesSummary with period: "week"
-- "Show me my spending by category this month" -> Use getExpensesByCategory
+English:
+- "I just bought a new laptop for 1200 dollars at Best Buy" -> Log as shopping, $1200, vendor: Best Buy, language: "en"
+- "Spent 25 on lunch" -> Log as food_dining, $25, language: "en"
+- "How much did I spend this week?" -> Use getExpensesSummary with period: "week", language: "en"
 
-Be concise and friendly. All amounts are in USD.`;
+Spanish:
+- "Compré una laptop nueva por 1200 dólares en Best Buy" -> Log as shopping, $1200, vendor: Best Buy, language: "es"
+- "Gasté 25 en almuerzo" -> Log as food_dining, $25, language: "es"
+- "¿Cuánto gasté esta semana?" -> Use getExpensesSummary with period: "week", language: "es"
+
+Be concise and friendly. All amounts are in USD. Always respond in the same language as the user.`;
 
 		// Build the user message content (text and/or image)
 		type MessageContent =
@@ -830,6 +846,7 @@ Be concise and friendly. All amounts are in USD.`;
 						category: logParams.category,
 						vendor: logParams.vendor,
 						spentAt: new Date(logParams.spentAt),
+						language: logParams.language,
 					};
 
 					const imageBuffer = await renderExpenseAdded(expenseAddedData);
@@ -867,6 +884,7 @@ Be concise and friendly. All amounts are in USD.`;
 						currency: "USD",
 						entryCount: summary.entryCount,
 						byCategory: summary.byCategory,
+						language: summaryParams.language,
 					};
 
 					const imageBuffer = await renderExpensesSummary(summaryData);
@@ -905,6 +923,7 @@ Be concise and friendly. All amounts are in USD.`;
 						currency: "USD",
 						entryCount: breakdown.entryCount,
 						byCategory: breakdown.byCategory,
+						language: categoryParams.language,
 					};
 
 					const imageBuffer = await renderExpensesSummary(summaryData);

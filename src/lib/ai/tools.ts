@@ -34,6 +34,11 @@ const logExpenseSchema = z.object({
 		.describe(
 			"ISO timestamp of when money was spent, inferred from context (default to now if not specified)",
 		),
+	language: z
+		.enum(["en", "es"])
+		.describe(
+			"Language of the user's message: 'en' for English, 'es' for Spanish. Detect this from the user's message language.",
+		),
 });
 
 const getExpensesSummarySchema = z.object({
@@ -48,11 +53,21 @@ const getExpensesSummarySchema = z.object({
 		.enum(expenseCategories)
 		.optional()
 		.describe("Optional: filter by specific category"),
+	language: z
+		.enum(["en", "es"])
+		.describe(
+			"Language of the user's message: 'en' for English, 'es' for Spanish. Detect this from the user's message language.",
+		),
 });
 
 const getExpensesByCategorySchema = z.object({
 	startDate: z.string().describe("Start date in YYYY-MM-DD format"),
 	endDate: z.string().describe("End date in YYYY-MM-DD format"),
+	language: z
+		.enum(["en", "es"])
+		.describe(
+			"Language of the user's message: 'en' for English, 'es' for Spanish. Detect this from the user's message language.",
+		),
 });
 
 // Export types
@@ -95,20 +110,21 @@ Infer the category from context:
  */
 export const getExpensesSummaryTool = tool<
 	GetExpensesSummaryParams,
-	{ period: string; date?: string; category?: string; action: "get_expenses_summary" }
+	{ period: string; date?: string; category?: string; language: string; action: "get_expenses_summary" }
 >({
 	description: `Get a summary of expenses for a specific time period.
 Use this when the user asks:
-- "How much did I spend this week?"
-- "What are my expenses this month?"
-- "Show me my spending for today"
-- "How much did I spend on food this month?"`,
+- "How much did I spend this week?" / "¿Cuánto gasté esta semana?"
+- "What are my expenses this month?" / "¿Cuáles son mis gastos este mes?"
+- "Show me my spending for today" / "Muéstrame mis gastos de hoy"
+- "How much did I spend on food this month?" / "¿Cuánto gasté en comida este mes?"`,
 	inputSchema: getExpensesSummarySchema,
 	execute: async (params) => {
 		return {
 			period: params.period,
 			date: params.date,
 			category: params.category,
+			language: params.language,
 			action: "get_expenses_summary" as const,
 		};
 	},
@@ -119,18 +135,19 @@ Use this when the user asks:
  */
 export const getExpensesByCategoryTool = tool<
 	GetExpensesByCategoryParams,
-	{ startDate: string; endDate: string; action: "get_expenses_by_category" }
+	{ startDate: string; endDate: string; language: string; action: "get_expenses_by_category" }
 >({
 	description: `Get a breakdown of expenses by category for a date range.
 Use this when the user asks:
-- "Show me my spending by category"
-- "Where is my money going?"
-- "Breakdown of expenses this month"`,
+- "Show me my spending by category" / "Muéstrame mis gastos por categoría"
+- "Where is my money going?" / "¿En qué se va mi dinero?"
+- "Breakdown of expenses this month" / "Desglose de gastos este mes"`,
 	inputSchema: getExpensesByCategorySchema,
 	execute: async (params) => {
 		return {
 			startDate: params.startDate,
 			endDate: params.endDate,
+			language: params.language,
 			action: "get_expenses_by_category" as const,
 		};
 	},

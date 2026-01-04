@@ -7,6 +7,7 @@ import {
 	formatTime,
 	renderToPng,
 } from "../index";
+import { getTranslations, type SupportedLocale } from "@/lib/i18n";
 
 export interface ExpenseAddedData {
 	description: string;
@@ -15,6 +16,7 @@ export interface ExpenseAddedData {
 	category: ExpenseCategory;
 	vendor?: string;
 	spentAt: Date;
+	language?: SupportedLocale;
 }
 
 function ExpenseAddedTemplate({
@@ -23,6 +25,7 @@ function ExpenseAddedTemplate({
 	data: ExpenseAddedData;
 }): ReactElement {
 	const category = categoryInfo[data.category];
+	const t = getTranslations(data.language || "en");
 
 	return (
 		<div
@@ -65,7 +68,7 @@ function ExpenseAddedTemplate({
 						color: colors.text,
 					}}
 				>
-					Expense Logged
+					{t.expenseLogged}
 				</span>
 			</div>
 
@@ -127,7 +130,7 @@ function ExpenseAddedTemplate({
 							textAlign: "center",
 						}}
 					>
-						at {data.vendor}
+						{t.at} {data.vendor}
 					</span>
 				)}
 			</div>

@@ -7,6 +7,11 @@ import {
 	formatDate,
 	renderToPng,
 } from "../index";
+import {
+	getTranslations,
+	formatExpenseCount,
+	type SupportedLocale,
+} from "@/lib/i18n";
 
 export interface CategoryBreakdown {
 	category: ExpenseCategory;
@@ -22,6 +27,7 @@ export interface ExpensesSummaryData {
 	currency: string;
 	entryCount: number;
 	byCategory: CategoryBreakdown[];
+	language?: SupportedLocale;
 }
 
 function CategoryBar({
@@ -132,6 +138,8 @@ function ExpensesSummaryTemplate({
 }: {
 	data: ExpensesSummaryData;
 }): ReactElement {
+	const t = getTranslations(data.language || "en");
+
 	// Sort categories by total, descending
 	const sortedCategories = [...data.byCategory].sort(
 		(a, b) => b.total - a.total,
@@ -214,7 +222,7 @@ function ExpensesSummaryTemplate({
 						color: colors.textSecondary,
 					}}
 				>
-					Total Spent
+					{t.totalSpent}
 				</span>
 			</div>
 
@@ -258,8 +266,8 @@ function ExpensesSummaryTemplate({
 						color: colors.textSecondary,
 					}}
 				>
-					{data.entryCount} {data.entryCount === 1 ? "expense" : "expenses"}{" "}
-					logged
+					{data.entryCount} {formatExpenseCount(data.entryCount, data.language || "en")}{" "}
+					{t.expensesLogged}
 				</span>
 			</div>
 		</div>
