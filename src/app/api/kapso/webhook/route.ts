@@ -732,6 +732,18 @@ export async function POST(request: Request) {
 	}
 
 	try {
+		// Initialize WhatsApp client
+		const whatsappClient = getWhatsAppClient();
+
+		// Mark message as read with typing indicator
+		await whatsappClient.messages.markRead({
+			phoneNumberId,
+			messageId: message.id,
+			typingIndicator: {
+				type: "text",
+			},
+		});
+
 		// Get or create user
 		const user = await getOrCreateUser(senderNumber);
 
@@ -919,8 +931,6 @@ Be concise and friendly. All amounts are in USD. Always respond in the same lang
 			modelUsed: "claude-haiku-4.5",
 		});
 
-		const whatsappClient = getWhatsAppClient();
-
 		// Process tool calls
 		for (const step of result.steps) {
 			for (const toolResult of step.toolResults) {
@@ -1075,8 +1085,8 @@ Be concise and friendly. All amounts are in USD. Always respond in the same lang
 
 		// Send error message to user
 		try {
-			const whatsappClient = getWhatsAppClient();
-			await whatsappClient.messages.sendText({
+			const errorClient = getWhatsAppClient();
+			await errorClient.messages.sendText({
 				phoneNumberId,
 				to: senderNumber,
 				body: "Sorry, I had trouble processing that. Could you try again?",
